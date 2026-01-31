@@ -5,49 +5,76 @@ public class PersonMovement : MonoBehaviour
 {
     [Header("Infection")]
     public bool isInfected = false;
-    [Range(0f, 1f)]
-    public float infectionProgress = 0f;
+    [Range(0f, 1f)] public float infectionProgress = 0f;
     public float infectionTimeRequired = 3f;
     public float infectionRadius = 0.8f;
+
     private Dictionary<PersonMovement, float> proximityTimers = new Dictionary<PersonMovement, float>();
 
-    [Header("Movement")]
-    public float moveSpeed = 1.5f;
-    public float roamRadius = 5f;
-    public float stoppingDistance = 1.2f;
+    [Header("Movement (Smooth AI)")]
+    public float moveSpeed = 1.2f;
+    public float steeringSmoothness = 8f;
+    public float roamRadius = 4f;
+    public float stoppingDistance = 0.25f;
 
-    [Header("Social Behavior")]
-    public float conversationDuration = 5f; // How long to stay in group
-    public float detectionRadius = 3f; // How far they can see others
-    public int maxGroupSize = 4;
+    [Header("Obstacle Avoidance")]
+    public LayerMask obstacleMask;
+    public float avoidCheckDistance = 1.1f;
+    public float avoidStrength = 1.3f;
+
+    [Header("AI Decisions")]
+    public float decisionInterval = 2f;
+    [Range(0f, 1f)] public float chanceToGoToZone = 0.35f;
+
+    [Header("Conversation")]
+    public float conversationDuration = 6f;
+
+    [Header("Seat Idle Movement (Natural)")]
+    public float seatWiggleRadius = 0.12f;     // tiny motion
+    public float seatWiggleSpeed = 1.8f;
 
     private SpriteRenderer sr;
+    private Rigidbody2D rb;
+
     private Vector2 targetPos;
-    private bool isMoving = false;
-    private bool isInConversation = false;
+    private float decisionTimer = 0f;
+
+    public bool isInConversation = false;
     private float conversationTimer = 0f;
-    private List<PersonMovement> currentGroup = new List<PersonMovement>();
+
+    private ConversationZone currentZone = null;
+
+    // Wiggle
+    private float wiggleSeed;
 
     void Awake()
     {
         sr = GetComponent<SpriteRenderer>();
+        rb = GetComponent<Rigidbody2D>();
+        wiggleSeed = Random.Range(0f, 100f);
     }
 
     void Start()
     {
-        ChooseNewAction();
+        PickRoamTarget();
         UpdateColor();
     }
 
     void Update()
     {
-        if (isInConversation)
+        decisionTimer += Time.deltaTime;
+
+        if (!isInConversation)
+        {
+            if (decisionTimer >= decisionInterval)
+            {
+                decisionTimer = 0f;
+                DecideNextAction();
+            }
+        }
+        else
         {
             HandleConversation();
-        }
-        else if (isMoving)
-        {
-            HandleMovement();
         }
 
         if (isInfected)
@@ -55,110 +82,76 @@ public class PersonMovement : MonoBehaviour
             TryInfectOthers();
         }
 
-        // Clean up proximity timers for people who moved away
         CleanupProximityTimers();
     }
 
-    void HandleMovement()
+    void FixedUpdate()
     {
-        // Check if we're close to someone to start a conversation
-        PersonMovement nearbyPerson = FindNearbyPerson();
-        if (nearbyPerson != null && !nearbyPerson.isInConversation)
+        if (isInConversation)
         {
-            StartConversation(nearbyPerson);
+            rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, Vector2.zero, steeringSmoothness * Time.fixedDeltaTime);
             return;
         }
 
-        // Continue moving to target
-        transform.position = Vector2.MoveTowards(
-            transform.position,
-            targetPos,
-            moveSpeed * Time.deltaTime
-        );
-
-        if (Vector2.Distance(transform.position, targetPos) < 0.1f)
-        {
-            isMoving = false;
-            Invoke(nameof(ChooseNewAction), Random.Range(1f, 3f));
-        }
+        MoveSmoothlyToTarget();
     }
 
-    void HandleConversation()
+    // ---------------------------
+    // AI Decision Logic
+    // ---------------------------
+    void DecideNextAction()
     {
-        conversationTimer += Time.deltaTime;
-
-        // End conversation after duration
-        if (conversationTimer >= conversationDuration)
+        // if already going to zone -> update seat position occasionally
+        if (currentZone != null)
         {
-            EndConversation();
+            targetPos = currentZone.GetSeatPosition(this);
+            return;
         }
-    }
 
-    PersonMovement FindNearbyPerson()
-    {
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, detectionRadius);
-
-        foreach (Collider2D hit in hits)
+        // choose closest zone with free slot
+        if (Random.value < chanceToGoToZone)
         {
-            if (hit.transform == transform) continue;
-
-            PersonMovement other = hit.GetComponent<PersonMovement>();
-            if (other != null && !other.isInConversation)
+            ConversationZone zone = FindClosestFreeZone();
+            if (zone != null && zone.TryAssignSeat(this))
             {
-                // Check if their group isn't full
-                if (other.currentGroup.Count < maxGroupSize)
-                {
-                    float distance = Vector2.Distance(transform.position, other.transform.position);
-                    if (distance < stoppingDistance)
-                    {
-                        return other;
-                    }
-                }
+                currentZone = zone;
+                targetPos = currentZone.GetSeatPosition(this);
+                return;
             }
         }
 
-        return null;
+        PickRoamTarget();
     }
 
-    void StartConversation(PersonMovement other)
+    ConversationZone FindClosestFreeZone()
     {
-        isInConversation = true;
-        isMoving = false;
-        CancelInvoke(nameof(ChooseNewAction));
-        conversationTimer = 0f;
+        GameObject[] zones = GameObject.FindGameObjectsWithTag("ConversationZone");
 
-        // Join their group or create new one
-        if (other.currentGroup.Count > 0)
+        ConversationZone best = null;
+        float bestDist = float.MaxValue;
+
+        foreach (GameObject z in zones)
         {
-            currentGroup = other.currentGroup;
-        }
-        else
-        {
-            currentGroup = new List<PersonMovement> { other };
-            other.currentGroup = currentGroup;
-            other.isInConversation = true;
-            other.isMoving = false;
-            other.CancelInvoke(nameof(ChooseNewAction));
-            other.conversationTimer = 0f;
+            ConversationZone zone = z.GetComponent<ConversationZone>();
+            if (zone == null) continue;
+            if (!zone.HasFreeSlot()) continue;
+
+            float dist = Vector2.Distance(transform.position, zone.transform.position);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = zone;
+            }
         }
 
-        if (!currentGroup.Contains(this))
-        {
-            currentGroup.Add(this);
-        }
+        return best;
     }
 
-    void EndConversation()
-    {
-        isInConversation = false;
-        currentGroup.Clear();
-        Invoke(nameof(ChooseNewAction), Random.Range(0.5f, 1.5f));
-    }
-
-    void ChooseNewAction()
+    void PickRoamTarget()
     {
         Vector2 newTarget;
         int attempts = 0;
+
         do
         {
             newTarget = (Vector2)transform.position + Random.insideUnitCircle * roamRadius;
@@ -167,29 +160,117 @@ public class PersonMovement : MonoBehaviour
         while (!IsInsideBounds(newTarget) && attempts < 10);
 
         targetPos = newTarget;
-        isMoving = true;
     }
 
-    bool IsInsideBounds(Vector2 pos)
+    // ---------------------------
+    // Movement + Obstacle Avoidance
+    // ---------------------------
+    void MoveSmoothlyToTarget()
     {
-        return pos.x > -5.5f && pos.x < 5.5f &&
-               pos.y > -5.5f && pos.y < 5.5f;
-    }
+        Vector2 currentPos = rb.position;
+        float dist = Vector2.Distance(currentPos, targetPos);
 
-    void OnCollisionEnter2D(Collision2D collision)
-    {
-        if (collision.gameObject.CompareTag("Wall"))
+        // reached target
+        if (dist <= stoppingDistance)
         {
-            ChooseNewAction();
+            if (currentZone != null)
+            {
+                isInConversation = true;
+                conversationTimer = 0f;
+                rb.linearVelocity = Vector2.zero;
+            }
+            else
+            {
+                rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, Vector2.zero, steeringSmoothness * Time.fixedDeltaTime);
+            }
+            return;
+        }
+
+        Vector2 desiredDir = (targetPos - currentPos).normalized;
+
+        // ✅ obstacle avoidance
+        Vector2 avoidDir = GetAvoidanceVector(desiredDir);
+
+        Vector2 finalDir = (desiredDir + avoidDir * avoidStrength).normalized;
+        Vector2 desiredVelocity = finalDir * moveSpeed;
+
+        rb.linearVelocity = Vector2.Lerp(
+            rb.linearVelocity,
+            desiredVelocity,
+            steeringSmoothness * Time.fixedDeltaTime
+        );
+    }
+
+    Vector2 GetAvoidanceVector(Vector2 desiredDir)
+    {
+        // cast forward to detect obstacles (tables, walls)
+        RaycastHit2D hit = Physics2D.Raycast(rb.position, desiredDir, avoidCheckDistance, obstacleMask);
+
+        if (hit.collider == null)
+            return Vector2.zero;
+
+        // move perpendicular around obstacle
+        Vector2 perp = Vector2.Perpendicular(desiredDir);
+
+        // choose side randomly but stable
+        float side = Mathf.PerlinNoise(wiggleSeed, Time.time * 0.2f) > 0.5f ? 1f : -1f;
+
+        return perp * side;
+    }
+
+    // ---------------------------
+    // Conversation Behavior
+    // ---------------------------
+    void HandleConversation()
+    {
+        conversationTimer += Time.deltaTime;
+
+        if (currentZone != null)
+        {
+            Vector2 seat = currentZone.GetSeatPosition(this);
+
+            // ✅ tiny natural movement around the seat (not running)
+            Vector2 wiggle = new Vector2(
+                Mathf.Sin(Time.time * seatWiggleSpeed + wiggleSeed),
+                Mathf.Cos(Time.time * seatWiggleSpeed + wiggleSeed)
+            ) * seatWiggleRadius;
+
+            Vector2 desired = seat + wiggle;
+
+            transform.position = Vector2.Lerp(
+                transform.position,
+                desired,
+                Time.deltaTime * 3f
+            );
+        }
+
+        if (conversationTimer >= conversationDuration)
+        {
+            EndConversation();
         }
     }
 
+    void EndConversation()
+    {
+        isInConversation = false;
+        conversationTimer = 0f;
+
+        if (currentZone != null)
+        {
+            currentZone.Leave(this);
+            currentZone = null;
+        }
+
+        PickRoamTarget();
+    }
+
+    // ---------------------------
+    // Infection
+    // ---------------------------
     void UpdateColor()
     {
         if (sr == null) return;
-        Color healthy = Color.white;
-        Color infected = Color.red;
-        sr.color = Color.Lerp(healthy, infected, infectionProgress);
+        sr.color = Color.Lerp(Color.white, Color.red, infectionProgress);
     }
 
     public void SetInfected()
@@ -201,61 +282,67 @@ public class PersonMovement : MonoBehaviour
 
     void TryInfectOthers()
     {
-        Collider2D[] hits = Physics2D.OverlapCircleAll(
-            transform.position,
-            infectionRadius
-        );
+        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, infectionRadius);
 
         foreach (Collider2D hit in hits)
         {
             if (hit.transform == transform) continue;
 
             PersonMovement other = hit.GetComponent<PersonMovement>();
-            if (other != null && !other.isInfected)
+            if (other == null || other.isInfected) continue;
+
+            if (!proximityTimers.ContainsKey(other))
+                proximityTimers[other] = 0f;
+
+            proximityTimers[other] += Time.deltaTime;
+
+            float requiredTime = isInConversation ? 0.5f : 2f;
+            float rateMultiplier = isInConversation ? 1.5f : 0.4f;
+
+            if (proximityTimers[other] >= requiredTime)
             {
-                // Track how long they've been near each other
-                if (!proximityTimers.ContainsKey(other))
-                {
-                    proximityTimers[other] = 0f;
-                }
+                other.infectionProgress += (Time.deltaTime / infectionTimeRequired) * rateMultiplier;
+                other.infectionProgress = Mathf.Clamp01(other.infectionProgress);
+                other.UpdateColor();
 
-                proximityTimers[other] += Time.deltaTime;
-
-                // Only infect if they've been close for a while (especially in conversation)
-                float requiredProximityTime = isInConversation ? 1f : 2f;
-
-                if (proximityTimers[other] >= requiredProximityTime)
-                {
-                    // Slower infection rate
-                    float infectionRate = isInConversation ? 1f : 0.5f;
-                    other.infectionProgress += (Time.deltaTime / infectionTimeRequired) * infectionRate;
-                    other.infectionProgress = Mathf.Clamp01(other.infectionProgress);
-                    other.UpdateColor();
-
-                    if (other.infectionProgress >= 1f)
-                    {
-                        other.SetInfected();
-                    }
-                }
+                if (other.infectionProgress >= 1f)
+                    other.SetInfected();
             }
         }
     }
 
     void CleanupProximityTimers()
     {
-        List<PersonMovement> toRemove = new List<PersonMovement>();
+        List<PersonMovement> remove = new List<PersonMovement>();
 
         foreach (var kvp in proximityTimers)
         {
-            if (kvp.Key == null || Vector2.Distance(transform.position, kvp.Key.transform.position) > infectionRadius)
+            if (kvp.Key == null ||
+                Vector2.Distance(transform.position, kvp.Key.transform.position) > infectionRadius)
             {
-                toRemove.Add(kvp.Key);
+                remove.Add(kvp.Key);
             }
         }
 
-        foreach (var person in toRemove)
+        foreach (var p in remove)
+            proximityTimers.Remove(p);
+    }
+
+    // ---------------------------
+    // Helpers
+    // ---------------------------
+    bool IsInsideBounds(Vector2 pos)
+    {
+        return pos.x > -5.5f && pos.x < 5.5f &&
+               pos.y > -5.5f && pos.y < 5.5f;
+    }
+
+    void OnDisable()
+    {
+        if (currentZone != null)
         {
-            proximityTimers.Remove(person);
+            currentZone.Leave(this);
+            currentZone = null;
         }
     }
 
@@ -263,13 +350,5 @@ public class PersonMovement : MonoBehaviour
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, infectionRadius);
-
-        Gizmos.color = Color.blue;
-        Gizmos.DrawWireSphere(transform.position, detectionRadius);
-    }
-
-    void OnDisable()
-    {
-        CancelInvoke();
     }
 }

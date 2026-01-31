@@ -8,10 +8,7 @@ public class SpawnManager : MonoBehaviour
     public GameObject personPrefab;
 
     [Header("Spawn Points (Left & Right)")]
-    public Transform[] spawnPoints; // size = 2
-
-    [Header("Spawn Timing")]
-    public float spawnInterval = 1.2f;
+    public Transform[] spawnPoints;
 
     [Header("Population Control")]
     public int maxActivePeople = 80;
@@ -20,23 +17,66 @@ public class SpawnManager : MonoBehaviour
     [Range(0f, 1f)]
     public float infectedPercentage = 0.2f;
 
+    [Header("Wave Settings")]
+    public int startWaveSize = 10;          // ✅ wave 1 spawns this many
+    public int waveIncrease = 5;            // ✅ each wave adds more people
+    public float timeBetweenWaves = 5f;     // ✅ delay after wave ends
+    public float spawnDelayInWave = 0.2f;   // ✅ delay between people inside wave
+
     public List<PersonMovement> activePeople = new List<PersonMovement>();
+
+    private int currentWave = 0;
+    private bool spawningWave = false;
 
     void Start()
     {
-        StartCoroutine(SpawnLoop());
+        StartCoroutine(WaveLoop());
     }
 
-    IEnumerator SpawnLoop()
+    IEnumerator WaveLoop()
     {
         while (true)
         {
-            if (activePeople.Count < maxActivePeople)
+            // Cleanup null references
+            activePeople.RemoveAll(p => p == null);
+
+            // ✅ Spawn only if not currently spawning
+            if (!spawningWave && activePeople.Count < maxActivePeople)
             {
-                SpawnPerson();
+                currentWave++;
+                int waveSize = startWaveSize + (waveIncrease * (currentWave - 1));
+
+                spawningWave = true;
+                yield return StartCoroutine(SpawnWave(waveSize));
+                spawningWave = false;
+
+                // wait between waves
+                yield return new WaitForSeconds(timeBetweenWaves);
             }
 
-            yield return new WaitForSeconds(spawnInterval);
+            yield return null;
+        }
+    }
+
+    IEnumerator SpawnWave(int waveSize)
+    {
+        int spawned = 0;
+
+        while (spawned < waveSize)
+        {
+            activePeople.RemoveAll(p => p == null);
+
+            if (activePeople.Count >= maxActivePeople)
+            {
+                // wait until population reduces
+                yield return null;
+                continue;
+            }
+
+            SpawnPerson();
+            spawned++;
+
+            yield return new WaitForSeconds(spawnDelayInWave);
         }
     }
 
@@ -48,8 +88,7 @@ public class SpawnManager : MonoBehaviour
             return;
         }
 
-        Transform spawn =
-            spawnPoints[Random.Range(0, spawnPoints.Length)];
+        Transform spawn = spawnPoints[Random.Range(0, spawnPoints.Length)];
 
         GameObject obj = Instantiate(
             personPrefab,
@@ -59,11 +98,14 @@ public class SpawnManager : MonoBehaviour
 
         PersonMovement person = obj.GetComponent<PersonMovement>();
 
-        if (Random.value < infectedPercentage)
+        if (person != null)
         {
-            person.SetInfected();
-        }
+            if (Random.value < infectedPercentage)
+            {
+                person.SetInfected();
+            }
 
-        activePeople.Add(person);
+            activePeople.Add(person);
+        }
     }
 }
