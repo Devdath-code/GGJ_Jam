@@ -42,7 +42,8 @@ public class PersonMovement : MonoBehaviour
     public bool isInConversation = false;
     private float conversationTimer = 0f;
 
-    private ConversationZone currentZone = null;
+    public ConversationZone currentZone = null;
+
 
     private float wiggleSeed;
 
@@ -52,6 +53,17 @@ public class PersonMovement : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         wiggleSeed = Random.Range(0f, 100f);
     }
+    public void ForceLeaveConversation()
+{
+    isInConversation = false;
+
+    // clear zone reference so they can choose a new one
+    currentZone = null;
+
+    // pick a new roam target immediately
+    PickRoamTarget();
+}
+
 
     void Start()
     {
@@ -144,7 +156,7 @@ public class PersonMovement : MonoBehaviour
         return best;
     }
 
-    void PickRoamTarget()
+    public void PickRoamTarget()
     {
         Vector2 newTarget;
         int attempts = 0;

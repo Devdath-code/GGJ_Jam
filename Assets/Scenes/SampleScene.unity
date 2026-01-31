@@ -197,7 +197,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ConversationZone
   maxSlots: 4
-  slotRadius: 0.85
+  slotRadius: 1
+  fullKickDelay: 20
+  fullColor: {r: 0, g: 0, b: 0, a: 1}
+  normalColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!212 &71759796
 SpriteRenderer:
   serializedVersion: 2
@@ -845,7 +848,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ConversationZone
   maxSlots: 4
-  slotRadius: 0.85
+  slotRadius: 1
+  fullKickDelay: 20
+  fullColor: {r: 0, g: 0, b: 0, a: 1}
+  normalColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!212 &1361047840
 SpriteRenderer:
   serializedVersion: 2
@@ -1139,7 +1145,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ConversationZone
   maxSlots: 4
-  slotRadius: 0.85
+  slotRadius: 1
+  fullKickDelay: 20
+  fullColor: {r: 0, g: 0, b: 0, a: 1}
+  normalColor: {r: 1, g: 1, b: 1, a: 1}
 --- !u!212 &1456774056
 SpriteRenderer:
   serializedVersion: 2

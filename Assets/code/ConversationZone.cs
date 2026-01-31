@@ -7,7 +7,54 @@ public class ConversationZone : MonoBehaviour
     public int maxSlots = 4;
     public float slotRadius = 0.85f;
 
+    [Header("Full Zone Behavior")]
+    public float fullKickDelay = 20f; // ✅ editable in inspector (not hardcoded)
+    public Color fullColor = Color.black;
+    public Color normalColor = Color.white;
+
+    private SpriteRenderer sr;
+
     private Dictionary<PersonMovement, int> seatIndex = new Dictionary<PersonMovement, int>();
+
+    private float fullTimer = 0f;
+
+    void Awake()
+    {
+        sr = GetComponent<SpriteRenderer>();
+        if (sr != null)
+        {
+            normalColor = sr.color; // store original color automatically
+        }
+    }
+
+    void Update()
+    {
+        CleanupNulls();
+
+        bool isFull = seatIndex.Count >= maxSlots;
+
+        // ✅ change table color
+        if (sr != null)
+        {
+            sr.color = isFull ? fullColor : normalColor;
+        }
+
+        // ✅ if table stays full too long, kick one person out
+        if (isFull)
+        {
+            fullTimer += Time.deltaTime;
+
+            if (fullTimer >= fullKickDelay)
+            {
+                KickOnePerson();
+                fullTimer = 0f;
+            }
+        }
+        else
+        {
+            fullTimer = 0f;
+        }
+    }
 
     public bool HasFreeSlot()
     {
@@ -61,6 +108,29 @@ public class ConversationZone : MonoBehaviour
 
         if (seatIndex.ContainsKey(person))
             seatIndex.Remove(person);
+    }
+
+    // ✅ kick 1 random person if zone full too long
+    void KickOnePerson()
+    {
+        if (seatIndex.Count == 0) return;
+
+        // convert dictionary keys to list
+        List<PersonMovement> people = new List<PersonMovement>(seatIndex.Keys);
+        people.RemoveAll(p => p == null);
+
+        if (people.Count == 0) return;
+
+        PersonMovement kicked = people[Random.Range(0, people.Count)];
+
+        // remove seat
+        Leave(kicked);
+
+        // force them to stop being in conversation and roam
+        if (kicked != null)
+        {
+            kicked.ForceLeaveConversation();
+        }
     }
 
     void CleanupNulls()
