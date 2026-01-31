@@ -1768,7 +1768,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5a75452a29d99dc46a0c6ebceaae7861, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MaskUI
-  masks: 10
+  masks: 1000
   maskText: {fileID: 1094759594}
 --- !u!1 &1829676216
 GameObject:

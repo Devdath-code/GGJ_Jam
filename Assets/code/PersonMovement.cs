@@ -1,9 +1,14 @@
 using UnityEngine;
 using System.Collections.Generic;
+using Unity.VisualScripting;
 
 public class PersonMovement : MonoBehaviour
 {
     public bool isMasked = false;
+
+    [Header("Karen")]
+    public bool isKaren = false;   
+    public float karenRadius = 1.0f;
 
     [Header("Infection")]
     public bool isInfected = false;
@@ -90,9 +95,16 @@ public class PersonMovement : MonoBehaviour
             HandleConversation();
         }
 
-        if (isInfected)
+        if (isInfected && !isMasked)
         {
             TryInfectOthers();
+        }
+
+        if (!isInfected && isMasked)
+        {
+            isKaren = true;
+            sr.color = Color.yellow;
+            karenbehaviour();
         }
 
         CleanupProximityTimers();
@@ -354,6 +366,27 @@ public class PersonMovement : MonoBehaviour
             sr.color = Color.blue;
         else
             UpdateColor(); // go back to infection color
+    }
+
+    public void karenbehaviour()
+    {
+        isMasked = false;
+        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, karenRadius);
+        foreach (Collider2D hit in hits)
+        {
+            if (hit.transform == transform) continue;
+
+            PersonMovement other = hit.GetComponent<PersonMovement>();
+            if ( other==null) continue;
+                if(other.isMasked==true && other.isInfected==true && other.isKaren==false)
+                {
+                     other.isMasked = false;
+                     Debug.Log("Karen is unmasking someone!");
+                        other.sr.color = Color.red;
+
+            }
+
+        }
     }
 
 }
