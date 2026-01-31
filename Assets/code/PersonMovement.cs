@@ -30,7 +30,7 @@ public class PersonMovement : MonoBehaviour
     public float conversationDuration = 6f;
 
     [Header("Seat Idle Movement (Natural)")]
-    public float seatWiggleRadius = 0.12f;     // tiny motion
+    public float seatWiggleRadius = 0.12f;
     public float seatWiggleSpeed = 1.8f;
 
     private SpriteRenderer sr;
@@ -44,7 +44,6 @@ public class PersonMovement : MonoBehaviour
 
     private ConversationZone currentZone = null;
 
-    // Wiggle
     private float wiggleSeed;
 
     void Awake()
@@ -96,19 +95,17 @@ public class PersonMovement : MonoBehaviour
         MoveSmoothlyToTarget();
     }
 
-    // ---------------------------
-    // AI Decision Logic
-    // ---------------------------
+    // ----------------------
+    // Decision Logic
+    // ----------------------
     void DecideNextAction()
     {
-        // if already going to zone -> update seat position occasionally
         if (currentZone != null)
         {
             targetPos = currentZone.GetSeatPosition(this);
             return;
         }
 
-        // choose closest zone with free slot
         if (Random.value < chanceToGoToZone)
         {
             ConversationZone zone = FindClosestFreeZone();
@@ -162,15 +159,14 @@ public class PersonMovement : MonoBehaviour
         targetPos = newTarget;
     }
 
-    // ---------------------------
-    // Movement + Obstacle Avoidance
-    // ---------------------------
+    // ----------------------
+    // Smooth Movement
+    // ----------------------
     void MoveSmoothlyToTarget()
     {
         Vector2 currentPos = rb.position;
         float dist = Vector2.Distance(currentPos, targetPos);
 
-        // reached target
         if (dist <= stoppingDistance)
         {
             if (currentZone != null)
@@ -183,12 +179,13 @@ public class PersonMovement : MonoBehaviour
             {
                 rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, Vector2.zero, steeringSmoothness * Time.fixedDeltaTime);
             }
+
             return;
         }
 
         Vector2 desiredDir = (targetPos - currentPos).normalized;
 
-        // ✅ obstacle avoidance
+        // obstacle avoidance
         Vector2 avoidDir = GetAvoidanceVector(desiredDir);
 
         Vector2 finalDir = (desiredDir + avoidDir * avoidStrength).normalized;
@@ -203,24 +200,19 @@ public class PersonMovement : MonoBehaviour
 
     Vector2 GetAvoidanceVector(Vector2 desiredDir)
     {
-        // cast forward to detect obstacles (tables, walls)
         RaycastHit2D hit = Physics2D.Raycast(rb.position, desiredDir, avoidCheckDistance, obstacleMask);
 
-        if (hit.collider == null)
-            return Vector2.zero;
+        if (hit.collider == null) return Vector2.zero;
 
-        // move perpendicular around obstacle
         Vector2 perp = Vector2.Perpendicular(desiredDir);
 
-        // choose side randomly but stable
         float side = Mathf.PerlinNoise(wiggleSeed, Time.time * 0.2f) > 0.5f ? 1f : -1f;
-
         return perp * side;
     }
 
-    // ---------------------------
-    // Conversation Behavior
-    // ---------------------------
+    // ----------------------
+    // Conversation
+    // ----------------------
     void HandleConversation()
     {
         conversationTimer += Time.deltaTime;
@@ -229,7 +221,6 @@ public class PersonMovement : MonoBehaviour
         {
             Vector2 seat = currentZone.GetSeatPosition(this);
 
-            // ✅ tiny natural movement around the seat (not running)
             Vector2 wiggle = new Vector2(
                 Mathf.Sin(Time.time * seatWiggleSpeed + wiggleSeed),
                 Mathf.Cos(Time.time * seatWiggleSpeed + wiggleSeed)
@@ -237,11 +228,7 @@ public class PersonMovement : MonoBehaviour
 
             Vector2 desired = seat + wiggle;
 
-            transform.position = Vector2.Lerp(
-                transform.position,
-                desired,
-                Time.deltaTime * 3f
-            );
+            transform.position = Vector2.Lerp(transform.position, desired, Time.deltaTime * 3f);
         }
 
         if (conversationTimer >= conversationDuration)
@@ -264,9 +251,18 @@ public class PersonMovement : MonoBehaviour
         PickRoamTarget();
     }
 
-    // ---------------------------
+    // ----------------------
+    // Bounds
+    // ----------------------
+    bool IsInsideBounds(Vector2 pos)
+    {
+        return pos.x > -5.5f && pos.x < 5.5f &&
+               pos.y > -5.5f && pos.y < 5.5f;
+    }
+
+    // ----------------------
     // Infection
-    // ---------------------------
+    // ----------------------
     void UpdateColor()
     {
         if (sr == null) return;
@@ -328,15 +324,6 @@ public class PersonMovement : MonoBehaviour
             proximityTimers.Remove(p);
     }
 
-    // ---------------------------
-    // Helpers
-    // ---------------------------
-    bool IsInsideBounds(Vector2 pos)
-    {
-        return pos.x > -5.5f && pos.x < 5.5f &&
-               pos.y > -5.5f && pos.y < 5.5f;
-    }
-
     void OnDisable()
     {
         if (currentZone != null)
@@ -344,11 +331,5 @@ public class PersonMovement : MonoBehaviour
             currentZone.Leave(this);
             currentZone = null;
         }
-    }
-
-    void OnDrawGizmosSelected()
-    {
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawWireSphere(transform.position, infectionRadius);
     }
 }

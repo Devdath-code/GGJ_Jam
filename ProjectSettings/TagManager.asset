@@ -5,11 +5,12 @@ TagManager:
   serializedVersion: 3
   tags:
   - Wall
+  - ConversationZone
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - Obstacle
   - Water
   - UI
   - 

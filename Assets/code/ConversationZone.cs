@@ -44,8 +44,8 @@ public class ConversationZone : MonoBehaviour
             return transform.position;
 
         int index = seatIndex[person];
-
         float angle = (360f / maxSlots) * index;
+
         Vector2 offset = new Vector2(
             Mathf.Cos(angle * Mathf.Deg2Rad),
             Mathf.Sin(angle * Mathf.Deg2Rad)
@@ -66,6 +66,7 @@ public class ConversationZone : MonoBehaviour
     void CleanupNulls()
     {
         List<PersonMovement> remove = new List<PersonMovement>();
+
         foreach (var kvp in seatIndex)
         {
             if (kvp.Key == null)

@@ -4,10 +4,10 @@ using System.Collections;
 public class PersonLifetime : MonoBehaviour
 {
     [Header("Lifetime")]
-    public float lifetime = 2f;
+    public float lifetime = 40f;
 
     [Header("Exit Movement")]
-    public float exitSpeed = 3f;
+    public float exitSpeed = 2.2f;
     public float exitDistanceThreshold = 0.2f;
 
     SpawnManager spawnManager;
@@ -35,7 +35,6 @@ public class PersonLifetime : MonoBehaviour
         if (spawnManager == null || spawnManager.spawnPoints.Length == 0)
             return;
 
-        // Pick left or right randomly
         exitTarget = spawnManager.spawnPoints[
             Random.Range(0, spawnManager.spawnPoints.Length)
         ];
@@ -43,7 +42,6 @@ public class PersonLifetime : MonoBehaviour
 
     IEnumerator MoveToExit()
     {
-        // Stop roaming while exiting
         if (personMovement != null)
             personMovement.enabled = false;
 
