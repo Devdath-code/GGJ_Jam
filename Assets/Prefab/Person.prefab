@@ -106,8 +106,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c7feea128c928664c86b1be26c53619c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PersonMovement
-  moveSpeed: 1.5
+  isInfected: 0
+  infectionProgress: 0
+  infectionTimeRequired: 20
+  infectionRadius: 0.8
+  moveSpeed: 0.5
   roamRadius: 5
+  stoppingDistance: 1.2
+  conversationDuration: 5
+  detectionRadius: 3
+  maxGroupSize: 4
 --- !u!58 &8825200343354493253
 CircleCollider2D:
   m_ObjectHideFlags: 0
