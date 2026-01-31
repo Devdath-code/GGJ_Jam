@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 public class PersonMovement : MonoBehaviour
 {
+    public bool isMasked = false;
+
     [Header("Infection")]
     public bool isInfected = false;
     [Range(0f, 1f)] public float infectionProgress = 0f;
@@ -344,4 +346,14 @@ public class PersonMovement : MonoBehaviour
             currentZone = null;
         }
     }
+    public void SetMask(bool value)
+    {
+        isMasked = value;
+
+        if (isMasked)
+            sr.color = Color.blue;
+        else
+            UpdateColor(); // go back to infection color
+    }
+
 }
