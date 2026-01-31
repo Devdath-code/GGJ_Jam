@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: 4140787790874957881}
   - component: {fileID: 8825200343354493253}
   - component: {fileID: 5800223568449549116}
+  - component: {fileID: 6684162263543283397}
   m_Layer: 0
   m_Name: Person
   m_TagString: Untagged
@@ -106,6 +107,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c7feea128c928664c86b1be26c53619c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PersonMovement
+  isInfected: 0
+  infectionProgress: 0
+  infectionTimeRequired: 3
+  infectionRadius: 0.8
   moveSpeed: 1.5
   roamRadius: 5
 --- !u!58 &8825200343354493253
@@ -171,3 +176,18 @@ Rigidbody2D:
   m_SleepingMode: 1
   m_CollisionDetection: 0
   m_Constraints: 4
+--- !u!114 &6684162263543283397
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1941223680777776381}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f8eb035b7a1157f4b9015b093f3a2aa8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PersonLifetime
+  lifetime: 70
+  exitSpeed: 3
+  exitDistanceThreshold: 0.2
