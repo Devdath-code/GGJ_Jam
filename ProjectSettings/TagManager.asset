@@ -5,11 +5,12 @@ TagManager:
   serializedVersion: 3
   tags:
   - Wall
+  - Person
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - Person
   - Water
   - UI
   - 

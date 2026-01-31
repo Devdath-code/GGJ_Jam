@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 public class PersonMovement : MonoBehaviour
 {
+    public bool isMasked = false;
+
     [Header("Infection")]
     public bool isInfected = false;
     [Range(0f, 1f)]
@@ -272,4 +274,16 @@ public class PersonMovement : MonoBehaviour
     {
         CancelInvoke();
     }
+
+    public void SetMask(bool value)
+    {
+        isMasked = value;
+
+        // Optional visual feedback
+        if (isMasked)
+            sr.color = Color.blue; // masked person
+        else
+            UpdateColor(); // return to infection-based color
+    }
+
 }
