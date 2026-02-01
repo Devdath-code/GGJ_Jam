@@ -1,14 +1,9 @@
 using UnityEngine;
 using System.Collections.Generic;
-using Unity.VisualScripting;
 
 public class PersonMovement : MonoBehaviour
 {
     public bool isMasked = false;
-
-    [Header("Karen")]
-    public bool isKaren = false;   
-    public float karenRadius = 1.0f;
 
     [Header("Infection")]
     public bool isInfected = false;
@@ -18,27 +13,37 @@ public class PersonMovement : MonoBehaviour
 
     private Dictionary<PersonMovement, float> proximityTimers = new Dictionary<PersonMovement, float>();
 
-    [Header("Movement (Smooth AI)")]
+    [Header("Movement")]
     public float moveSpeed = 1.2f;
     public float steeringSmoothness = 8f;
     public float roamRadius = 4f;
     public float stoppingDistance = 0.25f;
+
+    [Header("Arrive Slowdown")]
+    public float arriveSlowDistance = 1.0f;
 
     [Header("Obstacle Avoidance")]
     public LayerMask obstacleMask;
     public float avoidCheckDistance = 1.1f;
     public float avoidStrength = 1.3f;
 
-    [Header("AI Decisions")]
+    [Header("AI")]
     public float decisionInterval = 2f;
-    [Range(0f, 1f)] public float chanceToGoToZone = 0.35f;
+    [Range(0f, 1f)] public float chanceToGoToZone = 0.3f;
 
     [Header("Conversation")]
     public float conversationDuration = 6f;
 
-    [Header("Seat Idle Movement (Natural)")]
-    public float seatWiggleRadius = 0.12f;
-    public float seatWiggleSpeed = 1.8f;
+    [Header("Seat Larp (Snap Into Seat)")]
+    public float snapTriggerDistance = 0.35f;
+    public float snapToSeatTime = 0.25f;
+
+    [Header("Separation / Push")]
+    public float separationRadius = 0.55f;
+    public float separationStrength = 1.0f;
+
+    [Header("Stability")]
+    public float maxSpeed = 2.0f;
 
     private SpriteRenderer sr;
     private Rigidbody2D rb;
@@ -51,26 +56,19 @@ public class PersonMovement : MonoBehaviour
 
     public ConversationZone currentZone = null;
 
+    // ✅ Larp snap state
+    private bool isSnappingToSeat = false;
+    private float snapTimer = 0f;
+    private Vector2 snapStartPos;
 
     private float wiggleSeed;
 
     void Awake()
     {
-        sr = GetComponent<SpriteRenderer>();
+        sr = GetComponentInChildren<SpriteRenderer>();
         rb = GetComponent<Rigidbody2D>();
         wiggleSeed = Random.Range(0f, 100f);
     }
-    public void ForceLeaveConversation()
-{
-    isInConversation = false;
-
-    // clear zone reference so they can choose a new one
-    currentZone = null;
-
-    // pick a new roam target immediately
-    PickRoamTarget();
-}
-
 
     void Start()
     {
@@ -82,7 +80,8 @@ public class PersonMovement : MonoBehaviour
     {
         decisionTimer += Time.deltaTime;
 
-        if (!isInConversation)
+        // ✅ Roaming decision
+        if (!isInConversation && currentZone == null)
         {
             if (decisionTimer >= decisionInterval)
             {
@@ -90,59 +89,71 @@ public class PersonMovement : MonoBehaviour
                 DecideNextAction();
             }
         }
-        else
+
+        // ✅ Talking timer
+        if (isInConversation)
         {
-            HandleConversation();
+            conversationTimer += Time.deltaTime;
+            if (conversationTimer >= conversationDuration)
+                EndConversation();
         }
 
+        // Infection spread
         if (isInfected && !isMasked)
-        {
             TryInfectOthers();
-        }
-
-        if (!isInfected && isMasked)
-        {
-            isKaren = true;
-            sr.color = Color.yellow;
-            karenbehaviour();
-        }
 
         CleanupProximityTimers();
     }
 
     void FixedUpdate()
     {
-        if (isInConversation)
+        // ✅ if seated & snapping -> do the larp
+        if (isSnappingToSeat)
         {
-            rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, Vector2.zero, steeringSmoothness * Time.fixedDeltaTime);
+            DoSeatSnap();
+            ClampVelocity();
             return;
         }
 
+        // ✅ if talking: freeze RB
+        if (isInConversation && currentZone != null)
+        {
+            rb.linearVelocity = Vector2.zero;
+            ClampVelocity();
+            return;
+        }
+
+        // ✅ going to table but not seated yet: RB approach
+        if (currentZone != null && !isInConversation)
+        {
+            MoveTowardsSeatStable();
+
+            // separation still on while approaching
+            ApplySeparation();
+            ClampVelocity();
+            return;
+        }
+
+        // ✅ normal roaming
+        ApplySeparation();
         MoveSmoothlyToTarget();
+        ClampVelocity();
     }
 
-    // ----------------------
-    // Decision Logic
-    // ----------------------
     void DecideNextAction()
     {
-        if (currentZone != null)
-        {
-            targetPos = currentZone.GetSeatPosition(this);
-            return;
-        }
-
+        // try going to a table
         if (Random.value < chanceToGoToZone)
         {
             ConversationZone zone = FindClosestFreeZone();
             if (zone != null && zone.TryAssignSeat(this))
             {
                 currentZone = zone;
-                targetPos = currentZone.GetSeatPosition(this);
                 return;
             }
         }
 
+        // roam
         PickRoamTarget();
     }
 
@@ -153,16 +164,16 @@ public class PersonMovement : MonoBehaviour
         ConversationZone best = null;
         float bestDist = float.MaxValue;
 
-        foreach (GameObject z in zones)
+        foreach (var z in zones)
         {
             ConversationZone zone = z.GetComponent<ConversationZone>();
             if (zone == null) continue;
             if (!zone.HasFreeSlot()) continue;
 
-            float dist = Vector2.Distance(transform.position, zone.transform.position);
-            if (dist < bestDist)
+            float d = Vector2.Distance(transform.position, zone.transform.position);
+            if (d < bestDist)
             {
-                bestDist = dist;
+                bestDist = d;
                 best = zone;
             }
         }
@@ -170,7 +181,7 @@ public class PersonMovement : MonoBehaviour
         return best;
     }
 
-    public void PickRoamTarget()
+    void PickRoamTarget()
     {
         Vector2 newTarget;
         int attempts = 0;
@@ -185,9 +196,6 @@ public class PersonMovement : MonoBehaviour
         targetPos = newTarget;
     }
 
-    // ----------------------
-    // Smooth Movement
-    // ----------------------
     void MoveSmoothlyToTarget()
     {
         Vector2 currentPos = rb.position;
@@ -195,100 +203,133 @@ public class PersonMovement : MonoBehaviour
 
         if (dist <= stoppingDistance)
         {
-            if (currentZone != null)
-            {
-                isInConversation = true;
-                conversationTimer = 0f;
-                rb.linearVelocity = Vector2.zero;
-            }
-            else
-            {
-                rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, Vector2.zero, steeringSmoothness * Time.fixedDeltaTime);
-            }
-
+            rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, Vector2.zero, steeringSmoothness * Time.fixedDeltaTime);
             return;
         }
 
-        Vector2 desiredDir = (targetPos - currentPos).normalized;
+        float speedFactor = 1f;
+        if (dist < arriveSlowDistance)
+            speedFactor = Mathf.Clamp01(dist / arriveSlowDistance);
 
-        // obstacle avoidance
+        Vector2 desiredDir = (targetPos - currentPos).normalized;
         Vector2 avoidDir = GetAvoidanceVector(desiredDir);
 
         Vector2 finalDir = (desiredDir + avoidDir * avoidStrength).normalized;
-        Vector2 desiredVelocity = finalDir * moveSpeed;
+        Vector2 desiredVelocity = finalDir * moveSpeed * speedFactor;
 
-        rb.linearVelocity = Vector2.Lerp(
-            rb.linearVelocity,
-            desiredVelocity,
-            steeringSmoothness * Time.fixedDeltaTime
-        );
+        rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, desiredVelocity, steeringSmoothness * Time.fixedDeltaTime);
+    }
+
+    // ✅ stable RB approach to seat
+    void MoveTowardsSeatStable()
+    {
+        if (currentZone == null) return;
+
+        Vector2 seat = currentZone.GetSeatPosition(this);
+        float dist = Vector2.Distance(rb.position, seat);
+
+        // ✅ start larp snap only when close enough
+        if (dist <= snapTriggerDistance)
+        {
+            StartSeatSnap(seat);
+            return;
+        }
+
+        Vector2 dir = (seat - rb.position).normalized;
+        Vector2 desiredVel = dir * moveSpeed;
+
+        rb.linearVelocity = Vector2.Lerp(rb.linearVelocity, desiredVel, steeringSmoothness * Time.fixedDeltaTime);
+    }
+
+    void StartSeatSnap(Vector2 seatPos)
+    {
+        isSnappingToSeat = true;
+        snapTimer = 0f;
+        snapStartPos = transform.position;
+        rb.linearVelocity = Vector2.zero;
+
+        // instantly start conversation state but we will snap first
+        isInConversation = true;
+        conversationTimer = 0f;
+    }
+
+    void DoSeatSnap()
+    {
+        if (currentZone == null)
+        {
+            isSnappingToSeat = false;
+            isInConversation = false;
+            return;
+        }
+
+        Vector2 seat = currentZone.GetSeatPosition(this);
+
+        snapTimer += Time.fixedDeltaTime;
+        float t = Mathf.Clamp01(snapTimer / snapToSeatTime);
+
+        transform.position = Vector2.Lerp(snapStartPos, seat, t);
+        rb.linearVelocity = Vector2.zero;
+
+        if (t >= 1f)
+        {
+            isSnappingToSeat = false;
+            rb.linearVelocity = Vector2.zero;
+        }
     }
 
     Vector2 GetAvoidanceVector(Vector2 desiredDir)
     {
         RaycastHit2D hit = Physics2D.Raycast(rb.position, desiredDir, avoidCheckDistance, obstacleMask);
-
         if (hit.collider == null) return Vector2.zero;
 
         Vector2 perp = Vector2.Perpendicular(desiredDir);
-
         float side = Mathf.PerlinNoise(wiggleSeed, Time.time * 0.2f) > 0.5f ? 1f : -1f;
+
         return perp * side;
     }
 
-    // ----------------------
-    // Conversation
-    // ----------------------
-    void HandleConversation()
+    void ApplySeparation()
     {
-        conversationTimer += Time.deltaTime;
+        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, separationRadius);
 
-        if (currentZone != null)
+        Vector2 push = Vector2.zero;
+        int count = 0;
+
+        foreach (var hit in hits)
         {
-            Vector2 seat = currentZone.GetSeatPosition(this);
+            if (hit.transform == transform) continue;
 
-            Vector2 wiggle = new Vector2(
-                Mathf.Sin(Time.time * seatWiggleSpeed + wiggleSeed),
-                Mathf.Cos(Time.time * seatWiggleSpeed + wiggleSeed)
-            ) * seatWiggleRadius;
+            PersonMovement other = hit.GetComponent<PersonMovement>();
+            if (other == null) continue;
 
-            Vector2 desired = seat + wiggle;
+            Vector2 diff = (Vector2)(transform.position - other.transform.position);
+            float dist = diff.magnitude;
 
-            transform.position = Vector2.Lerp(transform.position, desired, Time.deltaTime * 3f);
+            if (dist > 0.001f)
+            {
+                push += diff.normalized / dist;
+                count++;
+            }
         }
 
-        if (conversationTimer >= conversationDuration)
+        if (count > 0)
         {
-            EndConversation();
+            push /= count;
+            rb.AddForce(push * separationStrength, ForceMode2D.Force);
         }
     }
 
-    void EndConversation()
+    void ClampVelocity()
     {
-        isInConversation = false;
-        conversationTimer = 0f;
-
-        if (currentZone != null)
-        {
-            currentZone.Leave(this);
-            currentZone = null;
-        }
-
-        PickRoamTarget();
+        rb.linearVelocity = Vector2.ClampMagnitude(rb.linearVelocity, maxSpeed);
     }
 
-    // ----------------------
-    // Bounds
-    // ----------------------
     bool IsInsideBounds(Vector2 pos)
     {
         return pos.x > -5.5f && pos.x < 5.5f &&
                pos.y > -5.5f && pos.y < 5.5f;
     }
 
-    // ----------------------
-    // Infection
-    // ----------------------
     void UpdateColor()
     {
         if (sr == null) return;
@@ -300,6 +341,16 @@ public class PersonMovement : MonoBehaviour
         isInfected = true;
         infectionProgress = 1f;
         UpdateColor();
+    }
+
+    public void SetMask(bool value)
+    {
+        isMasked = value;
+
+        if (isMasked)
+            sr.color = Color.blue;
+        else
+            UpdateColor();
     }
 
     void TryInfectOthers()
@@ -335,19 +386,30 @@ public class PersonMovement : MonoBehaviour
 
     void CleanupProximityTimers()
     {
-        List<PersonMovement> remove = new List<PersonMovement>();
+        List<PersonMovement> toRemove = new List<PersonMovement>();
 
         foreach (var kvp in proximityTimers)
         {
-            if (kvp.Key == null ||
-                Vector2.Distance(transform.position, kvp.Key.transform.position) > infectionRadius)
-            {
-                remove.Add(kvp.Key);
-            }
+            if (kvp.Key == null || Vector2.Distance(transform.position, kvp.Key.transform.position) > infectionRadius)
+                toRemove.Add(kvp.Key);
         }
 
-        foreach (var p in remove)
+        foreach (var p in toRemove)
             proximityTimers.Remove(p);
+    }
+
+    void EndConversation()
+    {
+        isInConversation = false;
+        conversationTimer = 0f;
+
+        if (currentZone != null)
+        {
+            currentZone.Leave(this);
+            currentZone = null;
+        }
+
+        PickRoamTarget();
     }
 
     void OnDisable()
@@ -358,35 +420,4 @@ public class PersonMovement : MonoBehaviour
             currentZone = null;
         }
     }
-    public void SetMask(bool value)
-    {
-        isMasked = value;
-
-        if (isMasked)
-            sr.color = Color.blue;
-        else
-            UpdateColor(); // go back to infection color
-    }
-
-    public void karenbehaviour()
-    {
-        isMasked = false;
-        Collider2D[] hits = Physics2D.OverlapCircleAll(transform.position, karenRadius);
-        foreach (Collider2D hit in hits)
-        {
-            if (hit.transform == transform) continue;
-
-            PersonMovement other = hit.GetComponent<PersonMovement>();
-            if ( other==null) continue;
-                if(other.isMasked==true && other.isInfected==true && other.isKaren==false)
-                {
-                     other.isMasked = false;
-                     Debug.Log("Karen is unmasking someone!");
-                        other.sr.color = Color.red;
-
-            }
-
-        }
-    }
-
 }
