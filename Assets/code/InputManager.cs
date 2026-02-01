@@ -10,9 +10,7 @@ public class InputManager : MonoBehaviour
     void Update()
     {
         if (Mouse.current.leftButton.wasPressedThisFrame)
-        {
             TryMaskPerson();
-        }
     }
 
     void TryMaskPerson()
@@ -23,12 +21,15 @@ public class InputManager : MonoBehaviour
         RaycastHit2D hit = Physics2D.Raycast(worldPos, Vector2.zero);
         if (!hit) return;
 
-        PersonMovement person = hit.collider.GetComponent<PersonMovement>();
+        PersonMovement person = hit.collider.GetComponentInParent<PersonMovement>();
         if (person == null) return;
+
         if (person.isMasked) return;
         if (!maskUI.UseMask()) return;
 
         person.SetMask(true);
-        screenShake.Shake();
+
+        if (screenShake != null)
+            screenShake.Shake();
     }
 }
